@@ -23,6 +23,7 @@ from miniboa import TelnetServer
 from pymongo import MongoClient
 from kitem import KItem
 from kcontainer import KContainer
+from kconnection import KConnection
 
 class KMudServer(TelnetServer):
     def __init__(self):
@@ -106,11 +107,10 @@ class KMudServer(TelnetServer):
 
     def on_connect(self, client):
         logging.info('New connection from {}'.format(client.addrport()))
-        conn = KConnection(client)
+        conn = KConnection(client, self.connection_list)
         conn.send('Welcome to KMud.\nPlease enter username.\n', Prompt=True)
-        conn.status = KConnectionStatus.VERIFY_USERNAME
-        KConnectionList.append(conn)  # Append the new KUser to user list
-        logging.info('{} total connections'.format(len(KConnectionList)))
+        self.connection_list.append(conn)
+        logging.info('{} total connections'.format(len(self.connection_list)))
 
     def on_disconnect(self, client):
         pass
