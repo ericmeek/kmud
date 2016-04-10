@@ -20,7 +20,7 @@
 from kobject import KObject
 
 class KTimer(KObject):
-    def __init__(self, args, onetime, callback, start_time, duration, char):
+    def __init__(self, char, onetime, callback, start_time, duration, *args):
         KObject.__init__(self, _id=None)
 
         self.args = args

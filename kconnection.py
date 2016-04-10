@@ -22,10 +22,11 @@ from pymongo import MongoClient
 from kenum import KConnectionStatus
 
 class KConnection(KClient):
-    def __init__(self, client, connection_list):
+    def __init__(self, client, connection_list, global_timers):
         KClient.__init__(self, client)
         self.status = KConnection.VERIFY_USERNAME
         self.connection_list = connection_list
+        self.timer_list = global_timers
         
     def verify_username(self, username):
         client = MongoClient()
@@ -98,8 +99,8 @@ class KConnection(KClient):
         elif self.status == KConnectionStatus.CHOOSE_CHARACTER:
             if self.choose_character(cmd):
                 self.send('Logging onto KMud, please wait...\n')
-                character = KCharacter(self.client, self._id)
-#                                       self.properties['selected_char_id'])
+                character = KCharacter(self.client, self._id,
+                                       self.timer_list)
                 character.status = KCharacterStatus.LOGIN
                 KConnectionList.remove(self)
                 KCharacterList[character.id] = character

@@ -1,22 +1,3 @@
-#
-# <one line to give the program's name and a brief idea of what it does.>
-# Copyright (C) 2016  <copyright holder> <email>
-# 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-# 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-# 
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# 
-#
-
 import logging
 
 from miniboa import TelnetServer
@@ -24,21 +5,26 @@ from pymongo import MongoClient
 from kitem import KItem
 from kcontainer import KContainer
 from kconnection import KConnection
+#from kcharacter import KCharacter
+from time import time
+
 
 class KMudServer(TelnetServer):
+
     def __init__(self):
         TelnetServer.__init__(self,
-            port=2525,
-            address='',
-            on_connect=self.on_connect,
-            on_disconnect=self.on_disconnect,
-            timeout=0.001)
+                              port=2525,
+                              address='',
+                              on_connect=self.on_connect,
+                              on_disconnect=self.on_disconnect,
+                              timeout=0.001)
         self.server_run = True
         self.item_dict = self.load_item_dict()
         self.container_dict = self.load_container_dict()
         self.connection_list = []
+        self.timer_list = []
         self.timer_tick = None
-        
+
     def load_container_dict(self):
         client = MongoClient()
         db = client.kmud
@@ -77,37 +63,39 @@ class KMudServer(TelnetServer):
 #            self.process_timers()
 
     def process_timers(self):
-        for timer in KTimerList:
+        for timer in self.timer_list:
             # Process timers that do not repeat
             if (time() - timer.start >= timer.duration and
-                not timer.repeatable):
-                    KTimerList.remove(timer)
-                    timer.callback(timer.args)
+                    not timer.repeatable):
+                self.timer_list.remove(timer)
+                timer.callback(timer.args)
             # Process repeating timers every 1 seconds
             # (Duration == -1)
             elif timer.duration == -1 and time() - self.timer_tick > 1.0:
                 self.timer_tick = time()
                 remove = timer.callback(timer.args)
                 if remove:
-                    KTimerList.remove(timer)
+                    self.timer_list.remove(timer)
 
     def process_clients(self):
-        for id, character in iter(KCharacterList.items()):
-            if character.status == KCharacterStatus.LOGIN:
-                character.login()
+        pass
+#        for id, character in iter(KCharacter.items()):
+#            if character.status == KCharacterStatus.LOGIN:
+#                character.login()
 
     def process_input(self):
-        for conn in KConnectionList:
-            if conn.client.active and conn.client.cmd_ready:
-                conn.process_input()
+        pass
+#        for conn in KConnectionList:
+#            if conn.client.active and conn.client.cmd_ready:
+#                conn.process_input()
 
-        for id, char in iter(KCharacterList.items()):
-            if char.client.active and char.client.cmd_ready:
-                char.process_input()
+#        for id, char in iter(KCharacterList.items()):
+#            if char.client.active and char.client.cmd_ready:
+#                char.process_input()
 
     def on_connect(self, client):
         logging.info('New connection from {}'.format(client.addrport()))
-        conn = KConnection(client, self.connection_list)
+        conn = KConnection(client, self.connection_list, self.timer_list)
         conn.send('Welcome to KMud.\nPlease enter username.\n', Prompt=True)
         self.connection_list.append(conn)
         logging.info('{} total connections'.format(len(self.connection_list)))
@@ -127,4 +115,3 @@ if __name__ == '__main__':
 
     # Server has shut down
     logging.info("Server shutdown")
-

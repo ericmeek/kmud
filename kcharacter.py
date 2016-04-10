@@ -1,26 +1,27 @@
 #
 # <one line to give the program's name and a brief idea of what it does.>
 # Copyright (C) 2016  <copyright holder> <email>
-# 
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# 
+#
 #
 
 import os
 import sys
 from kenum import KCharState
 from kclient import KClient
+from ktimer import KTimer
 
 CARD_DIRECTIONS = {'n': [0, 1], 'north': [0,1], 'e': [1, 0], 'east': [1, 0],
                    's': [0,-1], 'south': [0, -1], 'w': [-1, -0], 'west': [-1, -0],
@@ -28,11 +29,13 @@ CARD_DIRECTIONS = {'n': [0, 1], 'north': [0,1], 'e': [1, 0], 'east': [1, 0],
                    'se': [1, -1], 'southeast': [1, -1], 'sw': [-1, -1],
                    'southwest': [-1, -1]}
 
+
 class KCharacter(KClient):
-    def __init__(self, client, _id):
+    def __init__(self, client, _id, global_timers):
         KClient.__init__(self, client, _id)
 
         self.timers = []
+        self.global_timers = global_timers
         self.states = []
         self.location = None
         self.surname = None
@@ -85,17 +88,18 @@ class KCharacter(KClient):
     def process_rest(self, args):
         duration = float(args[0])
         timer = KTimer(self,
-                       duration,
+                       False,
+                       self.cb_stop_resting,
                        time(),
-                       self.cb_stop_resting)
+                       duration)
         self.timers[timer.id] = timer
         KTimerList.append(timer)
         self.send('You start resting.\n', Prompt=True)
-    
+
     def process_walk(self, cmd):
         if KCharState.WALKING in self.states:
             self.send('You are already walking.\n', Prompt=True)
-            return 
+            return
         direction = cmd[0]
         if direction in CARD_DIRECTIONS:
             timer = KTimer(self.id,
@@ -208,7 +212,7 @@ class KCharacter(KClient):
         else:
             self.location['coord'] = next_step
             return False
-        
+
     def process_input(self):
         cmd = self.client.get_command().strip().lower().split()
         if len(cmd) < 1:
