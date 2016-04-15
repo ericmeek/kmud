@@ -13,6 +13,16 @@ CARD_DIRECTIONS = {'n': [0, 1], 'north': [0,1], 'e': [1, 0], 'east': [1, 0],
                    'se': [1, -1], 'southeast': [1, -1], 'sw': [-1, -1],
                    'southwest': [-1, -1]}
 
+SYNONYMS = {'look': ['l','lo'],
+            'north': ['n'],
+            'east': ['e'],
+            'west': ['w'],
+            'south': ['s'],
+            'northeast': ['ne'],
+            'northwest': ['northwest'],
+            'southeast': ['southeast'],
+            'southwest': ['southwest']}
+
 class KCharState(Enum):
 
     WALKING = 1001
@@ -66,6 +76,27 @@ class KCharacter(KClient):
     def restart(self, args):
         os.execv('/vagrant/KMud/KMud.py', sys.argv)
 
+
+    def synonymize(self, cmds):
+        modified_cmds = []
+        for cmd in cmds:
+            if cmd in self.commands:
+                modified_cmds.append(cmd)
+            else:
+                for key, val in SYNONYMS.items():
+                    if cmd in val:
+                        modified_cmds.append(key)
+                        break
+                else:
+                    modified_cmds.append(cmd)
+        print(modified_cmds)
+        return modified_cmds
+
+    def has_timer(self, timer_name):
+        for timer in self.timers:
+            if timer.name == timer_name:
+                return True
+        return False
     def process_stop(self, args):
         try:
             last_state = self.states.pop()
@@ -84,17 +115,27 @@ class KCharacter(KClient):
         elif ''.join(args[0:]) == self.name().lower():
             return self.show_self()
         else:
-            self.send('Uknown command.\n')
+            self.send('Look at what?\n')
 
     def process_rest(self, args):
-        duration = float(args[0])
-        timer = KTimer(self,
-                       True,
-                       time(),
-                       self.cb_stop_resting,
-                       duration)
-        self.global_timers.append(timer)
-        self.send('You start resting.\n')
+        if self.has_timer('resting'):
+            self.send('You are already resting.\n')
+        else:
+            duration = float(args[0])
+            timer = KTimer('resting',
+                        self,
+                        True,
+                        time(),
+                        self.cb_resting,
+                        duration)
+            self.global_timers.append(timer)
+            self.timers.append(timer)
+            self.send('You start resting.\n')
+
+    def cb_resting(self, timer):
+        self.timers.remove(timer)
+        self.send('\nYou stop resting.\n')
+
 
     def process_walk(self, cmd):
         if KCharState.WALKING in self.states:
@@ -102,15 +143,17 @@ class KCharacter(KClient):
             return
         direction = cmd[0]
         if direction in CARD_DIRECTIONS:
-            timer = KTimer(self,
+            timer = KTimer('walk',
+                           self,
                         False,
                         time(),
                         self.cb_walking,
                         -1,
                         direction)
             self.global_timers.append(timer)
-            self.timers[timer._id] = timer
-            self.send('You start walking {}.\n'.format(direction))
+            self.timers.append(timer)
+            self.send('You start walking {}.\n'.format(direction),
+                      prompt=False)
             self.states.append(KCharState.WALKING)
         else:
             self.send('Unknown command\n',prompt=True)
@@ -144,7 +187,7 @@ class KCharacter(KClient):
         character = db.characters.find_one({'_id': self.id})
         self.first_name = character['first_name']
         self.surname = character['surname']
-        self.location['id'] = character['location']['id']
+        self.location['id'] = character['location']['_id']
         self.location['coord'] = KCoordinate(
             character['location']['coord'][0],
             character['location']['coord'][1],
@@ -179,7 +222,7 @@ class KCharacter(KClient):
         desc = '\n{} {}\n\n'.format(self.first_name, self.surname)
         desc += 'You are wearing '
         if len(items) == 0:
-            desc += 'nothing!'
+            desc += 'nothing!\n'
             self.send(desc)
             return True
         else:
@@ -195,9 +238,6 @@ class KCharacter(KClient):
             self.send('{}\n'.format(desc))
             return True
 
-    def cb_stop_resting(self, *args):
-        self.send('\nYou stop resting.\n')
-
     def cb_walking(self, args):
         """
         Callback for character moving timer
@@ -205,7 +245,8 @@ class KCharacter(KClient):
         direction = args[0]
         # Get the coordinates to add/subtract based on direction
         coord = KCoordinate(CARD_DIRECTIONS[direction][0],
-                            CARD_DIRECTIONS[direction][1])
+                            CARD_DIRECTIONS[direction][0],
+                            self.containers)
         # Find characters location on next step
         next_step = self.location['coord'] + coord
         # Determine if the next step will place character out of location
@@ -217,8 +258,10 @@ class KCharacter(KClient):
             self.location['coord'] = next_step
             return False
 
+
     def process_input(self):
         cmd = self.client.get_command().strip().lower().split()
+        cmd = self.synonymize(cmd)
         if len(cmd) < 1:
             self.send_prompt()
             return

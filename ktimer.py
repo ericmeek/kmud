@@ -3,10 +3,11 @@ from pymongo import MongoClient
 from kobject import KObject
 
 class KTimer(KObject):
-    def __init__(self, char, onetime, start_time,
+    def __init__(self, name, char, onetime, start_time,
                  callback, duration, *args):
         KObject.__init__(self, _id=None)
 
+        self.name = name
         self.args = args
         self.onetime = onetime
         self.callback = callback
@@ -16,7 +17,7 @@ class KTimer(KObject):
         self._id = self.state_save()
 
     def die(self):
-        self.callback(self.args)
+        self.callback(self)
 
     def state_save(self):
         client = MongoClient()

@@ -24,7 +24,7 @@ class KMudServer(TelnetServer):
         self.connections = []
         self.characters = {}
         self.global_timers = []
-        self.timer_tick = None
+        self.timer_tick = time()
 
     def load_containers(self):
         client = MongoClient()

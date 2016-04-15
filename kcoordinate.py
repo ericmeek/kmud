@@ -26,7 +26,8 @@ class KCoordinate:
         self._y = val
 
     def __add__(self, other):
-        return KCoordinate(self.x + other.x, self.y + other.y)
+        return KCoordinate(self.x + other.x, self.y + other.y,
+                           self.containers)
 
     def in_container(self, con_id):
         con = self.containers[con_id]
