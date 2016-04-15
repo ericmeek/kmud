@@ -7,11 +7,9 @@ from kclient import KClient
 from ktimer import KTimer
 from kcoordinate import KCoordinate
 
-CARD_DIRECTIONS = {'n': [0, 1], 'north': [0,1], 'e': [1, 0], 'east': [1, 0],
-                   's': [0,-1], 'south': [0, -1], 'w': [-1, -0], 'west': [-1, -0],
-                   'ne': [1, 1], 'northeast': [1, 1], 'nw': [-1, 1], 'northwest': [-1, 1],
-                   'se': [1, -1], 'southeast': [1, -1], 'sw': [-1, -1],
-                   'southwest': [-1, -1]}
+CARD_DIRECTIONS = {'north': [0,1], 'east': [1, 0], 'south': [0, -1], 'west': [-1, 0],
+                   'northeast': [1, 1], 'northwest': [-1, 1],
+                   'southeast': [1, -1], 'southwest': [-1, -1]}
 
 SYNONYMS = {'look': ['l','lo'],
             'north': ['n'],
@@ -97,11 +95,13 @@ class KCharacter(KClient):
             if timer.name == timer_name:
                 return True
         return False
+
     def process_stop(self, args):
         try:
-            last_state = self.states.pop()
-            if last_state == KCharState.WALKING:
-                pass
+            last_timer = self.timers.pop()
+            if last_timer.name == 'walk':
+                self.global_timers.remove(last_timer)
+                self.send('You stop walking.\n')
         except:
             self.send('Stop what?\n')
             return
@@ -138,7 +138,7 @@ class KCharacter(KClient):
 
 
     def process_walk(self, cmd):
-        if KCharState.WALKING in self.states:
+        if self.has_timer('walk'):
             self.send('You are already walking.\n')
             return
         direction = cmd[0]
@@ -152,8 +152,7 @@ class KCharacter(KClient):
                         direction)
             self.global_timers.append(timer)
             self.timers.append(timer)
-            self.send('You start walking {}.\n'.format(direction),
-                      prompt=False)
+            self.send('You start walking {}.\n'.format(direction))
             self.states.append(KCharState.WALKING)
         else:
             self.send('Unknown command\n',prompt=True)
@@ -212,7 +211,7 @@ class KCharacter(KClient):
         client = MongoClient()
         db = client.kmud
         location = db.containers.find_one({'_id': self.location['id']})
-        self.send('{} {}\n'.format('You are in ' if in_room else 'You see ',
+        self.send('{} {}.\n'.format('You are in' if in_room else 'You see',
                                    location['description']))
         self.status = KCharStatus.IDLE
         return True
@@ -243,11 +242,15 @@ class KCharacter(KClient):
         Callback for character moving timer
         """
         direction = args[0]
+        print('Current: {},{}'.format(self.location['coord'].x,
+                                      self.location['coord'].y))
+        print('Direction: {}'.format(direction))
         # Get the coordinates to add/subtract based on direction
         coord = KCoordinate(CARD_DIRECTIONS[direction][0],
-                            CARD_DIRECTIONS[direction][0],
+                            CARD_DIRECTIONS[direction][1],
                             self.containers)
         # Find characters location on next step
+        print('Adding: {},{}'.format(coord.x,coord.y))
         next_step = self.location['coord'] + coord
         # Determine if the next step will place character out of location
         if not next_step.in_container(self.location['id']):
