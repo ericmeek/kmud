@@ -27,7 +27,7 @@ class KMudServer(TelnetServer):
         self.timer_tick = time()
 
     def load_containers(self):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
         docs = db.containers.find()
         containers = {}
@@ -39,12 +39,20 @@ class KMudServer(TelnetServer):
                 container.parent_id = doc['parent_id']
             if 'description' in doc:
                 container.desc = doc['description']
+            if 'name' in doc:
+                container.name = doc['name']
             containers[container.id] = container
         logging.info('Loaded {} containers.'.format(len(containers)))
+
+        # Link parent and child containers
+        for key, val in containers.items():
+            if val.parent_id:
+                containers[val.parent_id].children.append(val)
+
         return containers
 
     def load_items(self):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
         docs = db.items.find()
         items = {}

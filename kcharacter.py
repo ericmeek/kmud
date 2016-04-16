@@ -7,9 +7,10 @@ from kclient import KClient
 from ktimer import KTimer
 from kcoordinate import KCoordinate
 
-CARD_DIRECTIONS = {'north': [0,1], 'east': [1, 0], 'south': [0, -1], 'west': [-1, 0],
-                   'northeast': [1, 1], 'northwest': [-1, 1],
-                   'southeast': [1, -1], 'southwest': [-1, -1]}
+WALK_RATE = 1.3
+CARD_DIRECTIONS = {'north': [0,WALK_RATE], 'east': [WALK_RATE, 0], 'south': [0, -WALK_RATE], 'west': [-WALK_RATE, 0],
+                   'northeast': [WALK_RATE, WALK_RATE], 'northwest': [-WALK_RATE, WALK_RATE],
+                   'southeast': [WALK_RATE, -WALK_RATE], 'southwest': [-WALK_RATE, -WALK_RATE]}
 
 SYNONYMS = {'look': ['l','lo'],
             'north': ['n'],
@@ -17,9 +18,9 @@ SYNONYMS = {'look': ['l','lo'],
             'west': ['w'],
             'south': ['s'],
             'northeast': ['ne'],
-            'northwest': ['northwest'],
-            'southeast': ['southeast'],
-            'southwest': ['southwest']}
+            'northwest': ['nw'],
+            'southeast': ['se'],
+            'southwest': ['sw']}
 
 class KCharState(Enum):
 
@@ -96,12 +97,21 @@ class KCharacter(KClient):
                 return True
         return False
 
+    def get_timer(self, timer_name):
+        for timer in self.timers:
+            if timer.name == timer_name:
+                return timer
+        return None
+
     def process_stop(self, args):
         try:
             last_timer = self.timers.pop()
             if last_timer.name == 'walk':
                 self.global_timers.remove(last_timer)
                 self.send('You stop walking.\n')
+            elif last_timer.name == 'resting':
+                self.global_timers.remove(last_timer)
+                self.send('You stop resting.\n')
         except:
             self.send('Stop what?\n')
             return
@@ -157,6 +167,35 @@ class KCharacter(KClient):
         else:
             self.send('Unknown command\n',prompt=True)
 
+
+    def cb_walking(self, args):
+        """
+        Callback for character moving timer
+        """
+        direction = args[0]
+        print('Current: {},{}'.format(self.location['coord'].x,
+                                      self.location['coord'].y))
+        print('Direction: {}'.format(direction))
+        # Get the coordinates to add/subtract based on direction
+        coord = KCoordinate(CARD_DIRECTIONS[direction][0],
+                            CARD_DIRECTIONS[direction][1],
+                            self.containers)
+        # Find characters location on next step
+        print('Adding: {},{}'.format(coord.x,coord.y))
+        next_step = self.location['coord'] + coord
+        # Determine if the next step will place character in a parent container
+        if not next_step.in_container(self.location['id']):
+            self.send('\nYou are leaving {} and entering {}.\n'.
+                      format(self.containers[self.location['id']].name,
+                      self.containers[self.containers[self.location['id']].parent_id].name))
+            self.location['id'] = self.containers[self.location['id']].parent_id
+        # Determine if the next step will place character in a child container
+        elif next_step.entering_container(self.location['id']):
+            new_container_id = next_step.entering_container(self.location['id'])
+            self.location['id'] = new_container_id
+            self.send('\nYou enter {}.\n'.format(self.containers[self.location['id']].name))
+        self.location['coord'] = next_step
+
     def process_show(self, args):
         if len(args) == 1:
             if args[0] == 'coord':
@@ -164,7 +203,14 @@ class KCharacter(KClient):
                                            self.location['coord'].y),
                           prompt=True)
                 return True
-        self.send('Unknown command.\n')
+            elif args[0] == 'timers':
+                count = 1
+                for timer in self.timers:
+                    self.send('{} {}\n'.format(count, timer.name), prompt=False)
+                    count += 1
+                self.send_prompt()
+            else:
+                self.send('Show what?\n')
 
     def process_restart(self):
         pass
@@ -181,7 +227,7 @@ class KCharacter(KClient):
         """
         Load character from database
         """
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
         character = db.characters.find_one({'_id': self.id})
         self.first_name = character['first_name']
@@ -208,7 +254,7 @@ class KCharacter(KClient):
         Show the room
         """
         # Load room description
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
         location = db.containers.find_one({'_id': self.location['id']})
         self.send('{} {}.\n'.format('You are in' if in_room else 'You see',
@@ -236,30 +282,6 @@ class KCharacter(KClient):
                     desc += ', a {}'.format(self.items[items[i][1]].name)
             self.send('{}\n'.format(desc))
             return True
-
-    def cb_walking(self, args):
-        """
-        Callback for character moving timer
-        """
-        direction = args[0]
-        print('Current: {},{}'.format(self.location['coord'].x,
-                                      self.location['coord'].y))
-        print('Direction: {}'.format(direction))
-        # Get the coordinates to add/subtract based on direction
-        coord = KCoordinate(CARD_DIRECTIONS[direction][0],
-                            CARD_DIRECTIONS[direction][1],
-                            self.containers)
-        # Find characters location on next step
-        print('Adding: {},{}'.format(coord.x,coord.y))
-        next_step = self.location['coord'] + coord
-        # Determine if the next step will place character out of location
-        if not next_step.in_container(self.location['id']):
-            self.send('\nYou stop as you are leaving the area.\n')
-            self.states.remove(KCharState.WALKING)
-            return True
-        else:
-            self.location['coord'] = next_step
-            return False
 
 
     def process_input(self):

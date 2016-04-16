@@ -42,28 +42,28 @@ class KConnection(KClient):
         self.properties = {}
 
     def verify_username(self, username):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
 
         doc = db.users.find_one({'username': username})
         return True if doc else False
 
     def get_user_id(self, username):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
 
         doc = db.users.find_one({'username': username})
         return doc['_id']
 
     def verify_password(self, password):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
 
         doc = db.users.find_one({'_id': self.id, 'password': password})
         return True if doc else False
 
     def show_characters(self):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
 
         self.properties['characters'] = {}

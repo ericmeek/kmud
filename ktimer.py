@@ -20,7 +20,7 @@ class KTimer(KObject):
         self.callback(self)
 
     def state_save(self):
-        client = MongoClient()
+        client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
         collection = db.timers
 

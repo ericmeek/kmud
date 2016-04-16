@@ -43,3 +43,9 @@ class KCoordinate:
             return True
         else:
             return False
+
+    def entering_container(self, con_id):
+        for container in self.containers[con_id].children:
+            if self.in_container(container.id):
+                return container.id
+        return False
