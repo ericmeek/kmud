@@ -29,6 +29,7 @@ class KClient(KObject):
     def is_client(self):
         return True
 
+
     def send_prompt(self):
         self.client.send('>')
 

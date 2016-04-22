@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 from enum import Enum
 from time import time
 from pymongo import MongoClient
@@ -7,12 +8,18 @@ from kclient import KClient
 from ktimer import KTimer
 from kcoordinate import KCoordinate
 
-WALK_RATE = 1.3
-CARD_DIRECTIONS = {'north': [0,WALK_RATE], 'east': [WALK_RATE, 0], 'south': [0, -WALK_RATE], 'west': [-WALK_RATE, 0],
-                   'northeast': [WALK_RATE, WALK_RATE], 'northwest': [-WALK_RATE, WALK_RATE],
-                   'southeast': [WALK_RATE, -WALK_RATE], 'southwest': [-WALK_RATE, -WALK_RATE]}
+# from kcontainer import KContainer
 
-SYNONYMS = {'look': ['l','lo'],
+WALK_RATE = 1.3
+
+CARD_DIRECTIONS = {'north': [0, WALK_RATE], 'east': [WALK_RATE, 0],
+                   'south': [0, -WALK_RATE], 'west': [-WALK_RATE, 0],
+                   'northeast': [WALK_RATE, WALK_RATE],
+                   'northwest': [-WALK_RATE, WALK_RATE],
+                   'southeast': [WALK_RATE, -WALK_RATE],
+                   'southwest': [-WALK_RATE, -WALK_RATE]}
+
+SYNONYMS = {'look': ['l', 'lo'],
             'north': ['n'],
             'east': ['e'],
             'west': ['w'],
@@ -22,30 +29,31 @@ SYNONYMS = {'look': ['l','lo'],
             'southeast': ['se'],
             'southwest': ['sw']}
 
-class KCharState(Enum):
-
-    WALKING = 1001
-    RUNNING = 1002
 
 class KCharStatus(Enum):
 
     LOGIN = 1001
     IDLE = 1002
 
+
 class KCharacter(KClient):
     def __init__(self, client, _id, characters,
                  global_timers, items, containers):
         KClient.__init__(self, client, _id)
 
-        self.items = items
+        # Global attributes
+
         self.characters = characters
-        self.timers = []
         self.global_timers = global_timers
-        self.containers = containers
-        self.states = []
-        self.location = {}
+        self.containers = containers  # dict
+
+        self.items = items
+        self.timers = []
+        self.container_id = None
+        self.coordinates = None
         self.surname = None
         self.first_name = None
+
         self.commands = {
             'look': self.process_look,
             'rest': self.process_rest,
@@ -66,6 +74,9 @@ class KCharacter(KClient):
             'feet': None
         }
 
+    def is_character(self):
+        return True
+
     def logging_in(self):
         return True if self.status == KCharStatus.LOGIN else False
 
@@ -74,7 +85,6 @@ class KCharacter(KClient):
 
     def restart(self, args):
         os.execv('/vagrant/KMud/KMud.py', sys.argv)
-
 
     def synonymize(self, cmds):
         modified_cmds = []
@@ -102,6 +112,62 @@ class KCharacter(KClient):
             if timer.name == timer_name:
                 return timer
         return None
+
+    def show_room(self, in_room=True):
+        """
+        Show the room
+        """
+        # Load room description
+        # client = MongoClient('mongodb://192.168.0.107:27017/')
+        # db = client.kmud
+
+        # Show stored container description
+        # location = db.containers.find_one({'_id': self.location._id})
+        self.send('{} {}.\n'.
+                  format('You are in' if in_room else 'You see',
+                         self.containers[self.container_id].name),
+                  prompt=False)
+
+        # Show other characters in area
+        # Close by you see Lukrani, Jack and Ronald.
+        # A little farther away you see Amy.
+        chars_close_by = []
+        chars_farther_away = []
+        # Loop through all other characters and
+        # find all within 3 meters (close by)
+        # and all within 9 meters (little farther)
+        print(self.characters)
+        for char in self.characters:
+            if char._id == self._id:
+                continue
+            if char.distance_from(self) <= 3:
+                print("{} is {} away.".format(char.first_name,
+                                              char.distance_from(self)))
+                chars_close_by.append(char.first_name)
+            elif char.distance_from(self) <= 9:
+                print("{} is {} away.".format(char.first_name,
+                                              char.distance_from(self)))
+                chars_farther_away.append(char)
+            else:
+                print("{} is {} away.".format(char.first_name,
+                                              char.distance_from(self)))
+        # TODO Check for multiple chars and fix comma
+        if len(chars_close_by) > 0:
+            self.send('Nearby you see {}\n'.
+                      format(", ".join(chars_close_by)), prompt=False)
+
+        if len(chars_farther_away) > 0:
+            self.send('A bit away you see {}\n',
+                      format(", ".join(chars_farther_away)), prompt=False)
+
+        self.status = KCharStatus.IDLE
+        self.send_prompt()
+        return True
+
+    def distance_from(self, obj):
+        return math.hypot(
+            self.coordinates.x - obj.coordinates.x,
+            self.coordinates.y - obj.coordinates.y)
 
     def process_stop(self, args):
         try:
@@ -133,11 +199,11 @@ class KCharacter(KClient):
         else:
             duration = float(args[0])
             timer = KTimer('resting',
-                        self,
-                        True,
-                        time(),
-                        self.cb_resting,
-                        duration)
+                           self,
+                           True,
+                           time(),
+                           self.cb_resting,
+                           duration)
             self.global_timers.append(timer)
             self.timers.append(timer)
             self.send('You start resting.\n')
@@ -146,67 +212,72 @@ class KCharacter(KClient):
         self.timers.remove(timer)
         self.send('\nYou stop resting.\n')
 
-
     def process_walk(self, cmd):
+        if len(cmd) == 0:
+            self.send("Walk where?\n", prompt=True)
+            return
+
         if self.has_timer('walk'):
             self.send('You are already walking.\n')
             return
+
         direction = cmd[0]
         if direction in CARD_DIRECTIONS:
             timer = KTimer('walk',
                            self,
-                        False,
-                        time(),
-                        self.cb_walking,
-                        -1,
-                        direction)
+                           False,
+                           time(),
+                           self.cb_walking,
+                           -1,
+                           direction)
             self.global_timers.append(timer)
             self.timers.append(timer)
             self.send('You start walking {}.\n'.format(direction))
-            self.states.append(KCharState.WALKING)
         else:
-            self.send('Unknown command\n',prompt=True)
-
+            self.send('Unknown command\n', prompt=True)
 
     def cb_walking(self, args):
         """
         Callback for character moving timer
         """
         direction = args[0]
-        print('Current: {},{}'.format(self.location['coord'].x,
-                                      self.location['coord'].y))
+        print('Current: {},{}'.format(self.coordinates.x,
+                                      self.coordinates.y))
         print('Direction: {}'.format(direction))
         # Get the coordinates to add/subtract based on direction
-        coord = KCoordinate(CARD_DIRECTIONS[direction][0],
-                            CARD_DIRECTIONS[direction][1],
-                            self.containers)
+        loc = KCoordinate(CARD_DIRECTIONS[direction][0],
+                          CARD_DIRECTIONS[direction][1])
         # Find characters location on next step
-        print('Adding: {},{}'.format(coord.x,coord.y))
-        next_step = self.location['coord'] + coord
-        # Determine if the next step will place character in a parent container
-        if not next_step.in_container(self.location['id']):
+        print('Adding: {},{}'.format(loc.x, loc.y))
+        next_step = self.coordinates + loc
+        # Determine if the next step will place character
+        # in a parent container
+        current_con = self.containers[self.container_id]
+        if not next_step.in_container(current_con):
+            parent_con = self.containers[current_con.parent_id]
             self.send('\nYou are leaving {} and entering {}.\n'.
-                      format(self.containers[self.location['id']].name,
-                      self.containers[self.containers[self.location['id']].parent_id].name))
-            self.location['id'] = self.containers[self.location['id']].parent_id
-        # Determine if the next step will place character in a child container
-        elif next_step.entering_container(self.location['id']):
-            new_container_id = next_step.entering_container(self.location['id'])
-            self.location['id'] = new_container_id
-            self.send('\nYou enter {}.\n'.format(self.containers[self.location['id']].name))
-        self.location['coord'] = next_step
+                      format(current_con.name, parent_con.name))
+            self.container_id = parent_con._id
+        # Determine if the next step will place character
+        # in a child container
+        elif next_step.entering_container(current_con.children):
+            new_container = next_step.entering_container(current_con.children)
+            self.container_id = new_container._id
+            self.send('\nYou enter {}.\n'.format(new_container.name))
+        self.coordinates = next_step
 
     def process_show(self, args):
         if len(args) == 1:
             if args[0] == 'coord':
-                self.send('{},{}\n'.format(self.location['coord'].x,
-                                           self.location['coord'].y),
+                self.send('{},{}\n'.format(self.coordinates.x,
+                                           self.coordinates.y),
                           prompt=True)
                 return True
             elif args[0] == 'timers':
                 count = 1
                 for timer in self.timers:
-                    self.send('{} {}\n'.format(count, timer.name), prompt=False)
+                    self.send('{} {}\n'.format(count, timer.name),
+                              prompt=False)
                     count += 1
                 self.send_prompt()
             else:
@@ -229,16 +300,13 @@ class KCharacter(KClient):
         """
         client = MongoClient('mongodb://192.168.0.107:27017/')
         db = client.kmud
-        character = db.characters.find_one({'_id': self.id})
+        character = db.characters.find_one({'_id': self._id})
+
         self.first_name = character['first_name']
         self.surname = character['surname']
-        self.location['id'] = character['location']['_id']
-        self.location['coord'] = KCoordinate(
-            character['location']['coord'][0],
-            character['location']['coord'][1],
-            self.containers
-        )
-
+        self.container_id = character['location']['_id']
+        self.coordinates = KCoordinate(character['location']['coord'][0],
+                                       character['location']['coord'][1])
         self.holding = {}
         if 'holding' in character:
             for key, val in character['holding'].items():
@@ -248,19 +316,6 @@ class KCharacter(KClient):
         if 'wearing' in character:
             for key, val in character['wearing'].items():
                 self.wearing[key] = val
-
-    def show_room(self, in_room=True):
-        """
-        Show the room
-        """
-        # Load room description
-        client = MongoClient('mongodb://192.168.0.107:27017/')
-        db = client.kmud
-        location = db.containers.find_one({'_id': self.location['id']})
-        self.send('{} {}.\n'.format('You are in' if in_room else 'You see',
-                                   location['description']))
-        self.status = KCharStatus.IDLE
-        return True
 
     def show_self(self):
         items = list(self.wearing.items())
@@ -282,7 +337,6 @@ class KCharacter(KClient):
                     desc += ', a {}'.format(self.items[items[i][1]].name)
             self.send('{}\n'.format(desc))
             return True
-
 
     def process_input(self):
         cmd = self.client.get_command().strip().lower().split()

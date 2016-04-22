@@ -1,5 +1,6 @@
 from kobject import KObject
 
+
 class KContainer(KObject):
     def __init__(self, _id, name):
         KObject.__init__(self, _id)

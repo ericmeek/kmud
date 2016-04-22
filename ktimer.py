@@ -2,6 +2,7 @@ from pymongo import MongoClient
 
 from kobject import KObject
 
+
 class KTimer(KObject):
     def __init__(self, name, char, onetime, start_time,
                  callback, duration, *args):
@@ -24,11 +25,10 @@ class KTimer(KObject):
         db = client.kmud
         collection = db.timers
 
-        timer = {'char': self.char.id,
+        timer = {'char': self.char._id,
                  'duration': self.duration,
                  'start': self.start_time,
                  'onetime': self.onetime,
                  'args': self.args}
 
         return collection.insert_one(timer).inserted_id
-

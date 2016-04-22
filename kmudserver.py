@@ -5,7 +5,7 @@ from pymongo import MongoClient
 from kitem import KItem
 from kcontainer import KContainer
 from kconnection import KConnection
-#from kcharacter import KCharacter
+# from kcharacter import KCharacter
 from time import time
 
 
@@ -22,7 +22,7 @@ class KMudServer(TelnetServer):
         self.items = self.load_items()
         self.containers = self.load_containers()
         self.connections = []
-        self.characters = {}
+        self.characters = []
         self.global_timers = []
         self.timer_tick = time()
 
@@ -41,13 +41,13 @@ class KMudServer(TelnetServer):
                 container.desc = doc['description']
             if 'name' in doc:
                 container.name = doc['name']
-            containers[container.id] = container
+            containers[container._id] = container
         logging.info('Loaded {} containers.'.format(len(containers)))
 
         # Link parent and child containers
-        for key, val in containers.items():
-            if val.parent_id:
-                containers[val.parent_id].children.append(val)
+        for _id, con in containers.items():
+            if con.parent_id:
+                containers[con.parent_id].children.append(_id)
 
         return containers
 
@@ -88,7 +88,7 @@ class KMudServer(TelnetServer):
 
     def process_clients(self):
         pass
-        for id, character in iter(self.characters.items()):
+        for character in self.characters:
             if character.logging_in():
                 character.login()
 
@@ -97,9 +97,9 @@ class KMudServer(TelnetServer):
             if conn.client.active and conn.client.cmd_ready:
                 conn.process_input()
 
-        for id, char in iter(self.characters.items()):
-            if char.client.active and char.client.cmd_ready:
-                char.process_input()
+        for character in self.characters:
+            if character.client.active and character.client.cmd_ready:
+                character.process_input()
 
     def on_connect(self, client):
         logging.info('New connection from {}'.format(client.addrport()))

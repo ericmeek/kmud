@@ -125,7 +125,7 @@ class KConnection(KClient):
                                        self.containers)
                 character.status = KCharStatus.LOGIN
                 self.connections.remove(self)
-                self.characters[character.id] = character
+                self.characters.append(character)
             else:
                 self.send('Not a valid character selection.\n',
                           prompt=False)
